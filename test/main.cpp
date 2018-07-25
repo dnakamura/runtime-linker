@@ -2,7 +2,7 @@
 #include <dlfcn.h>
 #include <string.h>
 #include "objectdir.h"
-#include "ObjOpen.hpp"
+#include <objfcn.h>
 #include <stdio.h>
 
 static const char *GetObjectName(const char *object){
