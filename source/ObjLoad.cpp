@@ -7,20 +7,20 @@
 #include <map>
 #include <string>
 #include <vector>
-
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <memory>
 
+#include "runtime_linker.hpp"
 //#include <pair>
 #define DBG_LOG(s, ...) \
   fprintf(stderr, "%s:%d - DBG: " s "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #define ERR_LOG(s, ...) \
   fprintf(stderr, "%s:%d - ERR: " s "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
-typedef std::map<std::string, void *> SymTable;
-typedef std::pair<void *, size_t> Mapping;
+
 
 void *codeCache = NULL;
 void *codeCachePtr = NULL;
@@ -32,27 +32,14 @@ SymTable globalSymbols;
 constexpr size_t CACHE_SIZE = 8 * 1024 * 1024;
 static void *ReadSection(ObjHandle obj, Elf64_Shdr *section);
 
-struct Object {
-  Elf64_Ehdr header;
-  FILE *file;
-  Elf64_Shdr shstrtab;
 
-  void *shstrs;
-  size_t shstrs_size;
-  // std::map<int, std::string> shstrs;
-  std::map<int, void *> sections;
-  SymTable symbols;
-  std::vector<void *> symbolVector;
-
-  Object();
-  ~Object();
-};
 
 Object::Object() { shstrs = NULL; }
 Object::~Object() {
   if (shstrs != NULL) free(shstrs);
   // for(auto mapping: sections)
 }
+
 
 // TODO we are currently assuming 64bit
 /*
@@ -257,7 +244,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
 
 static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
                        Elf64_Shdr *strInfo) {
-  char *stringTable = static_cast<char *>(ReadSection(obj, strInfo));
+  cunique_ptr<char> stringTable(static_cast<char *>(ReadSection(obj, strInfo)));
   if (!stringTable) {
     ERR_LOG("Failed to read string table");
     return -1;
@@ -288,7 +275,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
 
     if (symbol.st_shndx == SHN_UNDEF) {
       // we need to do a lookup of this symbol
-      const char *symbolName = stringTable + symbol.st_name;
+      const char *symbolName = stringTable.get() + symbol.st_name;
       void *symbolAddr = objsym(NULL, symbolName);
       if (symbolAddr == NULL) {
         DBG_LOG("Couldnt find symbol %s in objects, looking in native tables",
@@ -305,7 +292,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
       continue;
 
     } else {
-      std::string symbolName(stringTable + symbol.st_name);
+      std::string symbolName(stringTable.get() + symbol.st_name);
       // DBG_LOG("Adding symbol %s", stringTable + symbol.st_name);
 
       auto sectionLoad = obj->sections.find(symbol.st_shndx);
@@ -327,7 +314,6 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
   }
 
 end:
-  if (stringTable != NULL) free(stringTable);
   if (symtable != NULL) free(symtable);
   return rc;
 }
