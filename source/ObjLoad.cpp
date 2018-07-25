@@ -222,7 +222,7 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
   return 0;
 }
 
-int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
+static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
   // NOTE: sh_link is pointer to symbol table
   // We are dumb and are assuming only 1 symbol table
   auto it = obj->sections.find(reloc->sh_info);
@@ -255,7 +255,7 @@ int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
   return rc;
 }
 
-int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
+static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
                        Elf64_Shdr *strInfo) {
   char *stringTable = static_cast<char *>(ReadSection(obj, strInfo));
   if (!stringTable) {
