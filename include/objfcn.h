@@ -1,15 +1,12 @@
 #ifndef OBJFCN_H
 #define OBJFCN_H
 
-
 struct Object;
-typedef struct Object* ObjHandle;
-
+typedef struct Object *ObjHandle;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 /* Note: flags is ignored at the moment.
  only specified so signature is compatable with dlopen*/
