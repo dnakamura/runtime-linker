@@ -1,0 +1,3 @@
+#include "objectdir.h"
+
+const char * ObjectDir = "$<TARGET_PROPERTY:objectlib,BINARY_DIR>/CMakeFiles/objectlib.dir/";
