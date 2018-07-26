@@ -18,14 +18,7 @@
 
 #include "runtime_linker.hpp"
 //std::shared_ptr<spdlog::logger> _log;
-auto _log = spdlog::stdout_color_mt("console");
-
-//#include <pair>
-#define DBG_LOG(s, ...) \
-  fprintf(stderr, "%s:%d - DBG: " s "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#define ERR_LOG(s, ...) \
-  fprintf(stderr, "%s:%d - ERR: " s "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-
+auto _log = spdlog::stdout_color_mt("objload");
 
 
 void *codeCache = NULL;
@@ -55,19 +48,19 @@ static void* alloc_exec_mem(size_t sz) {
 
 int ReadStringTable(ObjHandle obj, const Elf64_Shdr *header) {
   if (header->sh_type != SHT_STRTAB) {
-    ERR_LOG("Section is not a string table");
+    _log->error("Section is not a string table");
     return -1;
   }
 
   void *shstrs = malloc(header->sh_size);
   if (!shstrs) {
-    ERR_LOG("failed to allocate memory");
+    _log->error("failed to allocate memory");
     return -1;
   }
   auto oldpos = ftell(obj->file);
   int rc = 0;
   if (fseek(obj->file, header->sh_offset, SEEK_SET)) {
-    ERR_LOG("Failed to seek file");
+    _log->error("Failed to seek file");
     free(shstrs);
     rc = -1;
     goto end;
@@ -98,7 +91,7 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   }
 
   if (hdr->sh_name >= obj->shstrs_size) {
-    ERR_LOG("Name for section %d(%d) is out of bounds", sect_num, hdr->sh_name);
+    _log->error("Name for section {}({}) is out of bounds", sect_num, hdr->sh_name);
     return -1;
   }
 
@@ -123,16 +116,16 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   }
 
   if ((*buffer + hdr->sh_size) > (*buffer_base + BUFSIZ)) {
-    ERR_LOG("Error wont fit in cache");
+    _log->error("Error wont fit in cache");
     return -1;
   }
 
   if (fseek(obj->file, hdr->sh_offset, SEEK_SET)) {
-    ERR_LOG("Failed to seek");
+    _log->error("Failed to seek");
     return -1;
   }
   if (1 != fread(*buffer, hdr->sh_size, 1, obj->file)) {
-    ERR_LOG("Failed to read section");
+    _log->error("Failed to read section");
     return -1;
   }
   obj->sections[sect_num] = *buffer;
@@ -227,7 +220,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
   uintptr_t sectionLoadAddr = reinterpret_cast<uintptr_t>(it->second);
   void *sectionData = ReadSection(obj, reloc);
   if (!sectionData) {
-    ERR_LOG("Failed to read section data");
+    _log->error("Failed to read section data");
     return -1;
   }
   int rc = 0;
@@ -299,7 +292,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
 
     } else {
       std::string symbolName(stringTable.get() + symbol.st_name);
-      // DBG_LOG("Adding symbol %s", stringTable + symbol.st_name);
+      //_log->debug("Adding symbol {}", stringTable + symbol.st_name);
 
       auto sectionLoad = obj->sections.find(symbol.st_shndx);
       if (sectionLoad == obj->sections.end()) {
@@ -359,10 +352,10 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
   for (int i = 0; i < header.e_shnum; ++i) {
     Elf64_Shdr *shdr = reinterpret_cast<Elf64_Shdr *>(
         static_cast<char *>(secthdrs) + (i * header.e_shentsize));
-    /*if(shdr->sh_flags && SHF_INFO_LINK){
-        DBG_LOG("Skipping section %d since it is an information section", i);
+    if(shdr->sh_flags && SHF_INFO_LINK){
+        //DBG_LOG("Skipping section %d since it is an information section", i);
         continue;
-    }*/
+    }
     switch (shdr->sh_type) {
       case SHT_PROGBITS:
 
@@ -453,20 +446,20 @@ ObjHandle objopen(const char *file, int flags) {
   FILE *f = fopen(file, "rb");
   ObjHandle handle = NULL;
   if (f == NULL) {
-    ERR_LOG("Failed to open file '%s'", file);
+    _log->error("Failed to open file '{}'", file);
     return NULL;
   }
 
   Elf64_Ehdr header;
   memset(&header, 0, sizeof(header));
   if (1 != fread(&header, sizeof(header), 1, f)) {
-    ERR_LOG("Failed to read header");
+    _log->error("Failed to read header");
     goto end;
   }
 
 #define CHECK_IDENT(n) (header.e_ident[EI_MAG##n] == ELFMAG##n)
   if (!(CHECK_IDENT(0) && CHECK_IDENT(1) && CHECK_IDENT(2))) {
-    ERR_LOG("Bad magic %x %x %x", header.e_ident[0], header.e_ident[1],
+    _log->error("Bad magic {} {} {}", header.e_ident[0], header.e_ident[1],
             header.e_ident[2]);
     goto end;
   }
@@ -495,7 +488,7 @@ void *objsym(ObjHandle handle, const char *sym) {
   } else {
     auto it = handle->symbols.find(symbolName);
     if (handle->symbols.end() == it) {
-      DBG_LOG("Symbol not found in table");
+      _log->debug("Symbol not found in table");
       return NULL;
     } else {
       return it->second;
