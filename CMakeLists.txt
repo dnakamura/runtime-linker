@@ -10,12 +10,20 @@ if(NOT HAS_ELF_H)
     message(FATAL_ERROR "runtime-linker requires elf.h")
 endif()
 
-find_package(Boost REQUIRED COMPONENTS log)
 
 add_library(objload STATIC
     source/ObjLoad.cpp
 )
 target_include_directories(objload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(objload PRIVATE dl)
+target_link_libraries(objload
+    PRIVATE
+        dl
+        spdlog
+)
+target_compile_features(objload
+    PRIVATE
+        cxx_auto_type
+)
 
 add_subdirectory(test)
+add_subdirectory(third_party)

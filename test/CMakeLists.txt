@@ -10,5 +10,5 @@ add_executable(testexe
     main.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/objectdir.cpp
 )
-target_link_libraries(testexe PRIVATE objload)
+target_link_libraries(testexe PRIVATE objload pthread)
 target_include_directories(testexe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

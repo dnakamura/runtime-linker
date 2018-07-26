@@ -13,7 +13,13 @@
 #include <sys/types.h>
 #include <memory>
 
+#include "spdlog/spdlog.h"
+//#include "spdlog/sinks/stdout_color_sinks.h"
+
 #include "runtime_linker.hpp"
+//std::shared_ptr<spdlog::logger> _log;
+auto _log = spdlog::stdout_color_mt("console");
+
 //#include <pair>
 #define DBG_LOG(s, ...) \
   fprintf(stderr, "%s:%d - DBG: " s "\n", __FILE__, __LINE__, ##__VA_ARGS__)
@@ -67,7 +73,7 @@ int ReadStringTable(ObjHandle obj, const Elf64_Shdr *header) {
     goto end;
   }
   if (1 != fread(shstrs, header->sh_size, 1, obj->file)) {
-    ERR_LOG("failed to read strings");
+    _log->error("failed to read strings");
     rc = -1;
     free(shstrs);
     goto end;
@@ -83,7 +89,7 @@ end:
 
 int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   if (!hdr->sh_flags & SHF_ALLOC) {
-    DBG_LOG("Skipping section %d since it is not allocated", sect_num);
+    _log->debug("Skipping section {} since it is not allocated", sect_num);
     return 0;
   }
   if (!hdr->sh_flags & SHF_INFO_LINK) {
@@ -102,10 +108,10 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   if (sect_name != ".text"
       //&& sect_name != ".data"
   ) {
-    DBG_LOG("Skipping unknown PROGBITS section %s", sect_name.c_str());
+    _log->info("Skipping unknown PROGBITS section {}", sect_name.c_str());
     return 0;
   }
-  DBG_LOG("Loading section %d", sect_num);
+  _log->debug("Loading section {}", sect_num);
   char **buffer_base = NULL;
   char **buffer = NULL;
   if (hdr->sh_flags & SHF_EXECINSTR) {
@@ -144,21 +150,21 @@ static void *ReadSection(ObjHandle obj, Elf64_Shdr *header) {
 
   void *data = malloc(header->sh_size);
   if (!data) {
-    ERR_LOG("failed to allocate memory");
+    _log->error("failed to allocate memory");
     return NULL;
   }
 
   auto oldpos = ftell(obj->file);
 
   if (fseek(obj->file, header->sh_offset, SEEK_SET)) {
-    ERR_LOG("Failed to seek file");
+    _log->error("Failed to seek file");
     free(data);
     data = NULL;
     goto end;
   }
 
   if (1 != fread(data, header->sh_size, 1, obj->file)) {
-    ERR_LOG("failed to read section data");
+    _log->error("failed to read section data");
     free(data);
     data = NULL;
     goto end;
@@ -186,7 +192,7 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
     uintptr_t patchPoint = sectLoadAddr + reloc.r_offset;
 
     if (symAddr == 0) {
-      ERR_LOG("Unexpected null symbol");
+      _log->error("Unexpected null symbol");
       return -1;
     }
     uintptr_t relocValue =
@@ -202,7 +208,7 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
             static_cast<uint32_t>(relocValue - patchPoint);
       } break;
       default:
-        ERR_LOG("Unsupported relocation type %d", ELF64_R_TYPE(reloc.r_info));
+        _log->error("Unsupported relocation type {}", ELF64_R_TYPE(reloc.r_info));
         return -1;
     }
   }
@@ -214,7 +220,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
   // We are dumb and are assuming only 1 symbol table
   auto it = obj->sections.find(reloc->sh_info);
   if (obj->sections.end() == it) {
-    DBG_LOG("skipping relocations for section %d", reloc->sh_info);
+    _log->info("skipping relocations for section {}", reloc->sh_info);
     // We didnt process this section, so ignore relocation
     return 0;
   }
@@ -235,7 +241,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
                          reloc->sh_size, sectionLoadAddr);
       break;
     default:
-      ERR_LOG("BAD section type");
+      _log->error("BAD section type");
       rc = -1;
   }
   free(sectionData);
@@ -246,20 +252,20 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
                        Elf64_Shdr *strInfo) {
   cunique_ptr<char> stringTable(static_cast<char *>(ReadSection(obj, strInfo)));
   if (!stringTable) {
-    ERR_LOG("Failed to read string table");
+    _log->error("Failed to read string table");
     return -1;
   }
   int rc = 0;
   Elf64_Sym *symtable = static_cast<Elf64_Sym *>(ReadSection(obj, symSection));
   const int num_symbols = symSection->sh_size / sizeof(Elf64_Sym);
   if (!symtable) {
-    ERR_LOG("Failed to read the symbol table");
+    _log->error("Failed to read the symbol table");
     rc = -1;
     goto end;
   }
 
   if (symSection->sh_size % sizeof(Elf64_Sym) != 0) {
-    ERR_LOG("Section size error");
+    _log->error("Section size error");
     rc = -1;
     goto end;
   }
@@ -278,12 +284,12 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
       const char *symbolName = stringTable.get() + symbol.st_name;
       void *symbolAddr = objsym(NULL, symbolName);
       if (symbolAddr == NULL) {
-        DBG_LOG("Couldnt find symbol %s in objects, looking in native tables",
+        _log->info("Couldnt find symbol {} in objects, looking in native tables",
                 symbolName);
         symbolAddr = dlsym(RTLD_DEFAULT, symbolName);
       }
       if (NULL == symbolAddr) {
-        DBG_LOG("Failed to resolve symbol %s", symbolName);
+        _log->error("Failed to resolve symbol {}", symbolName);
         // screw it, lets just pretend everything is fine and symbol address is
         // NULL
         symbolAddr = NULL;
@@ -323,7 +329,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
 
   void *secthdrs = malloc(header.e_shentsize * header.e_shnum);
   if (!secthdrs) {
-    ERR_LOG("failed to allocate memory for section headers");
+    _log->error("failed to allocate memory for section headers");
     return NULL;
   }
 
@@ -334,7 +340,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
   }
 
   if (1 != fread(secthdrs, header.e_shentsize * header.e_shnum, 1, f)) {
-    ERR_LOG("Failed to read section headers");
+    _log->error("Failed to read section headers");
     return NULL;
   }
   object = new Object();
@@ -346,7 +352,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
   if (ReadStringTable(object, reinterpret_cast<Elf64_Shdr *>(
                                   static_cast<char *>(secthdrs) +
                                   (header.e_shstrndx * header.e_shentsize)))) {
-    ERR_LOG("FAILED reading SHSTRS");
+    _log->error("FAILED reading SHSTRS");
     goto fail;
   }
 
@@ -361,7 +367,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
       case SHT_PROGBITS:
 
         if (ProcessProgBits(object, i, shdr)) {
-          ERR_LOG("Failed to process progbits for section %d", i);
+          _log->error("Failed to process progbits for section {}", i);
           goto fail;
         }
         break;
@@ -375,7 +381,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
             static_cast<char *>(secthdrs) +
             (shdr->sh_link * header.e_shentsize));
         if (ProcessSymbolTable(object, shdr, strTable)) {
-          ERR_LOG("Failed to process symbol table");
+          _log->error("Failed to process symbol table");
           goto fail;
         }
       }
@@ -391,7 +397,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
         continue;
 
       default:
-        ERR_LOG("Unknown shdr type %d, for idx %d", shdr->sh_type, i);
+        _log->error("Unknown shdr type {}, for idx {}", shdr->sh_type, i);
         goto fail;
     }
   }
@@ -399,9 +405,9 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
        ++it) {
     Elf64_Shdr *shdr = reinterpret_cast<Elf64_Shdr *>(
         static_cast<char *>(secthdrs) + (*it * header.e_shentsize));
-    DBG_LOG("Processing relocation section %d", *it);
+    _log->debug("Processing relocation section {}", *it);
     if (ProcessRelocs(object, shdr)) {
-      ERR_LOG("Failed to process relocation section %d", *it);
+      _log->error("Failed to process relocation section {}", *it);
       goto fail;
     }
   }
@@ -417,6 +423,7 @@ fail:
 
 static int InitCache() {
   if (codeCache == NULL) {
+    _log->info("Initializing code cache");
     codeCache = mmap(NULL, CACHE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
                      MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (codeCache == MAP_FAILED) {
@@ -466,7 +473,7 @@ ObjHandle objopen(const char *file, int flags) {
 #undef CHECK_IDENT
 
   if (header.e_type != ET_REL) {
-    ERR_LOG("Bad Elf Type %d", header.e_type);
+    _log->error("Bad Elf Type {}", header.e_type);
     goto end;
   }
   handle = LoadElf(header, f);
@@ -477,7 +484,7 @@ end:
 
 void *objsym(ObjHandle handle, const char *sym) {
   std::string symbolName(sym);
-  DBG_LOG("Looking up symbol %s", sym);
+  _log->debug("Looking up symbol {}", sym);
   if (NULL == handle) {
     auto it = globalSymbols.find(symbolName);
     if (globalSymbols.end() == it) {
