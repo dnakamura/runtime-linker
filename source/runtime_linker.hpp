@@ -34,8 +34,8 @@ struct ObjectLoadData{
     std::unique_ptr<Object> object; //< The object to return, assuming everything works out
     FILE *f;
 
-    ObjectLoadData();
-    ~ObjectLoadData();
+    inline ObjectLoadData();
+    inline ~ObjectLoadData();
 };
 
 ObjectLoadData::ObjectLoadData():
