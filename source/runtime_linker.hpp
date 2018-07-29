@@ -31,8 +31,21 @@ struct Object {
 
 //Information used while loading an object, but discarded afterward
 struct ObjectLoadData{
+    std::unique_ptr<Object> object; //< The object to return, assuming everything works out
+    FILE *f;
 
+    ObjectLoadData();
+    ~ObjectLoadData();
 };
+
+ObjectLoadData::ObjectLoadData():
+    f(NULL){}
+
+ObjectLoadData::~ObjectLoadData() {
+    if(NULL != f){
+        fclose(f);
+    }
+}
 
 template<class T>
 struct MallocDeleter {

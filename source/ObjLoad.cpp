@@ -81,6 +81,7 @@ end:
 }
 
 int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
+  _log->trace("Processing progbits section {}", sect_num);
   if (!hdr->sh_flags & SHF_ALLOC) {
     _log->debug("Skipping section {} since it is not allocated", sect_num);
     return 0;
@@ -317,51 +318,50 @@ end:
   return rc;
 }
 
-ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
-  ObjHandle object = NULL;
-
+int LoadElf(const Elf64_Ehdr &header, ObjectLoadData *loadData) {
   void *secthdrs = malloc(header.e_shentsize * header.e_shnum);
   if (!secthdrs) {
     _log->error("failed to allocate memory for section headers");
-    return NULL;
+    return -1;
   }
 
   // Start reading the program headers
-  if (fseek(f, header.e_shoff, SEEK_SET)) {
+  if (fseek(loadData->f, header.e_shoff, SEEK_SET)) {
     fprintf(stderr, "fseek failed\n");
-    return NULL;
+    return -1;
   }
 
-  if (1 != fread(secthdrs, header.e_shentsize * header.e_shnum, 1, f)) {
+  if (1 != fread(secthdrs, header.e_shentsize * header.e_shnum, 1, loadData->f)) {
     _log->error("Failed to read section headers");
-    return NULL;
+    return -1;
   }
-  object = new Object();
-  object->header = header;
-  object->file = f;
+  loadData->object = std::make_unique<Object>();
+  loadData->object->header = header;
+  loadData->object->file = loadData->f; //TODO we should get rid of this
   std::vector<int> RelocationSections;
 
   // get the shstrtab
-  if (ReadStringTable(object, reinterpret_cast<Elf64_Shdr *>(
+  if (ReadStringTable(loadData->object.get(), reinterpret_cast<Elf64_Shdr *>(
                                   static_cast<char *>(secthdrs) +
                                   (header.e_shstrndx * header.e_shentsize)))) {
     _log->error("FAILED reading SHSTRS");
-    goto fail;
+    return -1;
   }
 
   for (int i = 0; i < header.e_shnum; ++i) {
     Elf64_Shdr *shdr = reinterpret_cast<Elf64_Shdr *>(
         static_cast<char *>(secthdrs) + (i * header.e_shentsize));
-    if(shdr->sh_flags && SHF_INFO_LINK){
-        //DBG_LOG("Skipping section %d since it is an information section", i);
+    /*if(shdr->sh_flags && SHF_INFO_LINK){
+
+        _log->info("Skipping section {} since it is an information section", i);
         continue;
-    }
+    }*/
     switch (shdr->sh_type) {
       case SHT_PROGBITS:
 
-        if (ProcessProgBits(object, i, shdr)) {
+        if (ProcessProgBits(loadData->object.get(), i, shdr)) {
           _log->error("Failed to process progbits for section {}", i);
-          goto fail;
+          return -1;
         }
         break;
       case SHT_REL:
@@ -373,9 +373,9 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
         Elf64_Shdr *strTable = reinterpret_cast<Elf64_Shdr *>(
             static_cast<char *>(secthdrs) +
             (shdr->sh_link * header.e_shentsize));
-        if (ProcessSymbolTable(object, shdr, strTable)) {
+        if (ProcessSymbolTable(loadData->object.get(), shdr, strTable)) {
           _log->error("Failed to process symbol table");
-          goto fail;
+          return -1;
         }
       }
 
@@ -391,7 +391,7 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
 
       default:
         _log->error("Unknown shdr type {}, for idx {}", shdr->sh_type, i);
-        goto fail;
+        return -1;
     }
   }
   for (auto it = RelocationSections.begin(); it != RelocationSections.end();
@@ -399,19 +399,14 @@ ObjHandle LoadElf(const Elf64_Ehdr &header, FILE *f) {
     Elf64_Shdr *shdr = reinterpret_cast<Elf64_Shdr *>(
         static_cast<char *>(secthdrs) + (*it * header.e_shentsize));
     _log->debug("Processing relocation section {}", *it);
-    if (ProcessRelocs(object, shdr)) {
+    if (ProcessRelocs(loadData->object.get(), shdr)) {
       _log->error("Failed to process relocation section {}", *it);
-      goto fail;
+      return -1;
     }
   }
 end:
   free(secthdrs);
-  return object;
-
-fail:
-  delete object;
-  free(secthdrs);
-  return NULL;
+  return 0;
 }
 
 static int InitCache() {
@@ -441,38 +436,41 @@ static int InitCache() {
 
 ObjHandle objopen(const char *file, int flags) {
   if (InitCache()) {
-    return NULL;
+    return nullptr;
   }
-  FILE *f = fopen(file, "rb");
-  ObjHandle handle = NULL;
-  if (f == NULL) {
+  std::unique_ptr<ObjectLoadData> loadData = std::make_unique<ObjectLoadData>();
+
+  FILE *f  = fopen(file, "rb");
+  if (nullptr == f) {
     _log->error("Failed to open file '{}'", file);
-    return NULL;
+    return nullptr;
   }
+  loadData->f = f;
 
   Elf64_Ehdr header;
   memset(&header, 0, sizeof(header));
   if (1 != fread(&header, sizeof(header), 1, f)) {
     _log->error("Failed to read header");
-    goto end;
+    return nullptr;
   }
 
 #define CHECK_IDENT(n) (header.e_ident[EI_MAG##n] == ELFMAG##n)
   if (!(CHECK_IDENT(0) && CHECK_IDENT(1) && CHECK_IDENT(2))) {
     _log->error("Bad magic {} {} {}", header.e_ident[0], header.e_ident[1],
             header.e_ident[2]);
-    goto end;
+    return nullptr;
   }
 #undef CHECK_IDENT
 
   if (header.e_type != ET_REL) {
     _log->error("Bad Elf Type {}", header.e_type);
-    goto end;
+    return nullptr;
   }
-  handle = LoadElf(header, f);
-end:
-  if (handle == NULL) fclose(f);
-  return handle;
+  int rc = LoadElf(header, loadData.get());
+  if (0 == rc){
+    return std::move(loadData->object.release());
+  }
+  return nullptr;
 }
 
 void *objsym(ObjHandle handle, const char *sym) {
