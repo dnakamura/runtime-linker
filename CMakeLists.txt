@@ -14,6 +14,7 @@ endif()
 add_library(objload STATIC
     source/logging.cpp
     source/ObjLoad.cpp
+    source/objsym.cpp
 )
 target_include_directories(objload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(objload

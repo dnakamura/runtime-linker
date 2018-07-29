@@ -3,6 +3,7 @@
 
 #include <elf.h>
 #include <map>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -62,4 +63,5 @@ struct MallocDeleter {
 template<class T>
 using cunique_ptr = std::unique_ptr<T, MallocDeleter<T> >;
 
+extern SymTable globalSymbols;
 #endif
