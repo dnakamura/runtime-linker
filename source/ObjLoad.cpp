@@ -18,19 +18,19 @@
 using namespace objload;
 // std::shared_ptr<spdlog::logger> _log;
 
-void *codeCache = NULL;
-void *codeCachePtr = NULL;
-void *dataCache = NULL;
-void *dataCachePtr = NULL;
+void *codeCache = nullptr;
+void *codeCachePtr = nullptr;
+void *dataCache = nullptr;
+void *dataCachePtr = nullptr;
 
 SymTable globalSymbols;
 
 constexpr size_t CACHE_SIZE = 8 * 1024 * 1024;
 static void *ReadSection(ObjHandle obj, Elf64_Shdr *section);
 
-Object::Object() { shstrs = NULL; }
+Object::Object() { shstrs = nullptr; }
 Object::~Object() {
-  if (shstrs != NULL) free(shstrs);
+  if (shstrs != nullptr) free(shstrs);
   // for(auto mapping: sections)
 }
 
@@ -104,8 +104,8 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
     return 0;
   }
   log::progbits->debug("Loading section {}", sect_num);
-  char **buffer_base = NULL;
-  char **buffer = NULL;
+  char **buffer_base = nullptr;
+  char **buffer = nullptr;
   if (hdr->sh_flags & SHF_EXECINSTR) {
     buffer_base = reinterpret_cast<char **>(&codeCache);
     buffer = reinterpret_cast<char **>(&codeCachePtr);
@@ -143,7 +143,7 @@ static void *ReadSection(ObjHandle obj, Elf64_Shdr *header) {
   void *data = malloc(header->sh_size);
   if (!data) {
     _log->error("failed to allocate memory");
-    return NULL;
+    return nullptr;
   }
 
   auto oldpos = ftell(obj->file);
@@ -151,14 +151,14 @@ static void *ReadSection(ObjHandle obj, Elf64_Shdr *header) {
   if (fseek(obj->file, header->sh_offset, SEEK_SET)) {
     _log->error("Failed to seek file");
     free(data);
-    data = NULL;
+    data = nullptr;
     goto end;
   }
 
   if (1 != fread(data, header->sh_size, 1, obj->file)) {
     _log->error("failed to read section data");
     free(data);
-    data = NULL;
+    data = nullptr;
     goto end;
   }
 
@@ -269,7 +269,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
     const Elf64_Sym &symbol = symtable[i];
 
     if (symbol.st_shndx == SHN_ABS || i == 0) {
-      obj->symbolVector.push_back(NULL);
+      obj->symbolVector.push_back(nullptr);
       continue;  // we probably dont need any of these symbols
                  // Plus it would be a bunch of work to even resolve them
     }
@@ -277,18 +277,18 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
     if (symbol.st_shndx == SHN_UNDEF) {
       // we need to do a lookup of this symbol
       const char *symbolName = stringTable.get() + symbol.st_name;
-      void *symbolAddr = objsym(NULL, symbolName);
-      if (symbolAddr == NULL) {
+      void *symbolAddr = objsym(nullptr, symbolName);
+      if (nullptr == symbolAddr) {
         log::symtab->info(
             "Couldnt find symbol {} in objects, looking in native tables",
             symbolName);
         symbolAddr = dlsym(RTLD_DEFAULT, symbolName);
       }
-      if (NULL == symbolAddr) {
+      if (nullptr == symbolAddr) {
         log::symtab->error("Failed to resolve symbol {}", symbolName);
         // screw it, lets just pretend everything is fine and symbol address is
         // NULL
-        symbolAddr = NULL;
+        symbolAddr = nullptr;
       }
       obj->symbolVector.push_back(symbolAddr);
       continue;
@@ -301,7 +301,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
         log::symtab->error("Bad section index {} for symbol {}",
                            symbol.st_shndx, symbolName);
         // we didnt load this section, so lets assume we dont need the symbol :P
-        obj->symbolVector.push_back(NULL);
+        obj->symbolVector.push_back(nullptr);
         continue;
       }
 
@@ -318,7 +318,7 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
   }
 
 end:
-  if (symtable != NULL) free(symtable);
+  if (nullptr != symtable) free(symtable);
   return rc;
 }
 
@@ -416,9 +416,9 @@ end:
 }
 
 static int InitCache() {
-  if (codeCache == NULL) {
+  if (nullptr == codeCache) {
     _log->info("Initializing code cache");
-    codeCache = mmap(NULL, CACHE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
+    codeCache = mmap(nullptr, CACHE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
                      MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (codeCache == MAP_FAILED) {
       // perror("C")
@@ -428,8 +428,8 @@ static int InitCache() {
     }
     codeCachePtr = codeCache;
   }
-  if (dataCache == NULL) {
-    dataCache = mmap(NULL, CACHE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
+  if (nullptr == dataCache) {
+    dataCache = mmap(nullptr, CACHE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
                      MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (dataCache == MAP_FAILED) {
       perror("Data cache map failed");
