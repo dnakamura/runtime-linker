@@ -13,12 +13,11 @@
 #include <sys/types.h>
 #include <memory>
 
-#include "spdlog/spdlog.h"
-//#include "spdlog/sinks/stdout_color_sinks.h"
-
 #include "runtime_linker.hpp"
+#include "logging.hpp"
+using namespace objload;
 //std::shared_ptr<spdlog::logger> _log;
-auto _log = spdlog::stdout_color_mt("objload");
+
 
 
 void *codeCache = NULL;
@@ -81,18 +80,18 @@ end:
 }
 
 int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
-  _log->trace("Processing progbits section {}", sect_num);
+  log::progbits->trace("Processing progbits section {}", sect_num);
   if (!hdr->sh_flags & SHF_ALLOC) {
-    _log->debug("Skipping section {} since it is not allocated", sect_num);
+    log::progbits->debug("Skipping section {} since it is not allocated", sect_num);
     return 0;
   }
   if (!hdr->sh_flags & SHF_INFO_LINK) {
-    // DBG_LOG("Skipping section %d since it is an info section", sect_num);
+    log::progbits->debug("Skipping section {} since it is an info section", sect_num);
     return 0;
   }
 
   if (hdr->sh_name >= obj->shstrs_size) {
-    _log->error("Name for section {}({}) is out of bounds", sect_num, hdr->sh_name);
+    log::progbits->error("Name for section {}({}) is out of bounds", sect_num, hdr->sh_name);
     return -1;
   }
 
@@ -102,10 +101,10 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   if (sect_name != ".text"
       //&& sect_name != ".data"
   ) {
-    _log->info("Skipping unknown PROGBITS section {}", sect_name.c_str());
+    log::progbits->info("Skipping unknown PROGBITS section {}", sect_name.c_str());
     return 0;
   }
-  _log->debug("Loading section {}", sect_num);
+  log::progbits->debug("Loading section {}", sect_num);
   char **buffer_base = NULL;
   char **buffer = NULL;
   if (hdr->sh_flags & SHF_EXECINSTR) {
@@ -117,16 +116,16 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   }
 
   if ((*buffer + hdr->sh_size) > (*buffer_base + BUFSIZ)) {
-    _log->error("Error wont fit in cache");
+    log::progbits->error("Error wont fit in cache");
     return -1;
   }
 
   if (fseek(obj->file, hdr->sh_offset, SEEK_SET)) {
-    _log->error("Failed to seek");
+    log::progbits->error("Failed to seek");
     return -1;
   }
   if (1 != fread(*buffer, hdr->sh_size, 1, obj->file)) {
-    _log->error("Failed to read section");
+    log::progbits->error("Failed to read section");
     return -1;
   }
   obj->sections[sect_num] = *buffer;
@@ -186,7 +185,7 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
     uintptr_t patchPoint = sectLoadAddr + reloc.r_offset;
 
     if (symAddr == 0) {
-      _log->error("Unexpected null symbol");
+      log::reloc->error("Unexpected null symbol");
       return -1;
     }
     uintptr_t relocValue =
@@ -202,7 +201,7 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
             static_cast<uint32_t>(relocValue - patchPoint);
       } break;
       default:
-        _log->error("Unsupported relocation type {}", ELF64_R_TYPE(reloc.r_info));
+        log::reloc->error("Unsupported relocation type {}", ELF64_R_TYPE(reloc.r_info));
         return -1;
     }
   }
@@ -214,14 +213,14 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
   // We are dumb and are assuming only 1 symbol table
   auto it = obj->sections.find(reloc->sh_info);
   if (obj->sections.end() == it) {
-    _log->info("skipping relocations for section {}", reloc->sh_info);
+    log::reloc->info("skipping relocations for section {}", reloc->sh_info);
     // We didnt process this section, so ignore relocation
     return 0;
   }
   uintptr_t sectionLoadAddr = reinterpret_cast<uintptr_t>(it->second);
   void *sectionData = ReadSection(obj, reloc);
   if (!sectionData) {
-    _log->error("Failed to read section data");
+    log::reloc->error("Failed to read section data");
     return -1;
   }
   int rc = 0;
@@ -235,7 +234,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
                          reloc->sh_size, sectionLoadAddr);
       break;
     default:
-      _log->error("BAD section type");
+      log::reloc->error("BAD section type");
       rc = -1;
   }
   free(sectionData);
@@ -246,24 +245,25 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
                        Elf64_Shdr *strInfo) {
   cunique_ptr<char> stringTable(static_cast<char *>(ReadSection(obj, strInfo)));
   if (!stringTable) {
-    _log->error("Failed to read string table");
+    log::symtab->error("Failed to read string table");
     return -1;
   }
   int rc = 0;
   Elf64_Sym *symtable = static_cast<Elf64_Sym *>(ReadSection(obj, symSection));
   const int num_symbols = symSection->sh_size / sizeof(Elf64_Sym);
   if (!symtable) {
-    _log->error("Failed to read the symbol table");
+    log::symtab->error("Failed to read the symbol table");
     rc = -1;
     goto end;
   }
 
   if (symSection->sh_size % sizeof(Elf64_Sym) != 0) {
-    _log->error("Section size error");
+    log::symtab->error("Section size error");
     rc = -1;
     goto end;
   }
   // TODO assert that the symbol vector has 0 elements
+  log::symtab->debug("Processing {} symbols from symbol table", num_symbols);
   for (int i = 0; i < num_symbols; ++i) {
     const Elf64_Sym &symbol = symtable[i];
 
@@ -278,12 +278,12 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
       const char *symbolName = stringTable.get() + symbol.st_name;
       void *symbolAddr = objsym(NULL, symbolName);
       if (symbolAddr == NULL) {
-        _log->info("Couldnt find symbol {} in objects, looking in native tables",
+        log::symtab->info("Couldnt find symbol {} in objects, looking in native tables",
                 symbolName);
         symbolAddr = dlsym(RTLD_DEFAULT, symbolName);
       }
       if (NULL == symbolAddr) {
-        _log->error("Failed to resolve symbol {}", symbolName);
+        log::symtab->error("Failed to resolve symbol {}", symbolName);
         // screw it, lets just pretend everything is fine and symbol address is
         // NULL
         symbolAddr = NULL;
@@ -293,17 +293,18 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
 
     } else {
       std::string symbolName(stringTable.get() + symbol.st_name);
-      //_log->debug("Adding symbol {}", stringTable + symbol.st_name);
 
       auto sectionLoad = obj->sections.find(symbol.st_shndx);
       if (sectionLoad == obj->sections.end()) {
-        // ERR_LOG("Bad section index %d", symbol.st_shndx);
+        log::symtab->error("Bad section index {} for symbol {}", symbol.st_shndx, symbolName);
         // we didnt load this section, so lets assume we dont need the symbol :P
         obj->symbolVector.push_back(NULL);
         continue;
       }
+
       void *const symbolAddr =
           static_cast<char *>(sectionLoad->second) + symbol.st_value;
+      log::symtab->debug("Loaded symbol {} at addr {}", symbolName, symbolAddr);
       obj->symbols[symbolName] = symbolAddr;
       obj->symbolVector.push_back(symbolAddr);
 

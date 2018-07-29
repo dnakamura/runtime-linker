@@ -12,6 +12,7 @@ endif()
 
 
 add_library(objload STATIC
+    source/logging.cpp
     source/ObjLoad.cpp
 )
 target_include_directories(objload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
