@@ -20,25 +20,26 @@ static const char *GetObjectName(const char *object) {
 }
 
 int main(int argc, char **argv) {
-  // void *dll = dlopen("./Object.o", RTLD_NOW);
-  // printf("dlopen = %p\n", dll);
+  (void)argc;
+  (void)argv;
+
   ObjHandle handle = objopen(GetObjectName("Object.c.o"), 0);
   printf("Handle = %p\n", handle);
-  if (handle == NULL) return 1;
+  if (handle == nullptr) {
+    return 1;
+  }
 
   void *foo = objsym(handle, "foo");
   printf("foo=%p\n", foo);
-  if (NULL != foo) {
+  if (nullptr != foo) {
     int x = reinterpret_cast<int (*)()>(foo)();
     printf("foo() = %d\n", x);
   }
 
   void *bar = objsym(handle, "bar");
   printf("bar = %p\n", bar);
-  if (NULL != bar) {
-    // puts("test");
+  if (nullptr != bar) {
     reinterpret_cast<void (*)(const char *)>(bar)("Hello World, from bar()");
-    // puts("bye");
   }
   return 0;
 }
