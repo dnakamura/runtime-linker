@@ -12,7 +12,6 @@
 typedef std::map<std::string, void *> SymTable;
 typedef std::pair<void *, size_t> Mapping;
 
-
 struct Object {
   Elf64_Ehdr header;
   FILE *file;
@@ -29,38 +28,33 @@ struct Object {
   ~Object();
 };
 
+// Information used while loading an object, but discarded afterward
+struct ObjectLoadData {
+  std::unique_ptr<Object>
+      object;  //< The object to return, assuming everything works out
+  FILE *f;
 
-//Information used while loading an object, but discarded afterward
-struct ObjectLoadData{
-    std::unique_ptr<Object> object; //< The object to return, assuming everything works out
-    FILE *f;
-
-    inline ObjectLoadData();
-    inline ~ObjectLoadData();
+  inline ObjectLoadData();
+  inline ~ObjectLoadData();
 };
 
-ObjectLoadData::ObjectLoadData():
-    f(NULL){}
+ObjectLoadData::ObjectLoadData() : f(NULL) {}
 
 ObjectLoadData::~ObjectLoadData() {
-    if(NULL != f){
-        fclose(f);
-    }
+  if (NULL != f) {
+    fclose(f);
+  }
 }
 
-template<class T>
+template <class T>
 struct MallocDeleter {
-    constexpr MallocDeleter() {}
+  constexpr MallocDeleter() {}
 
-    void operator()(T* ptr){
-        free(ptr);
-    }
-
+  void operator()(T *ptr) { free(ptr); }
 };
 
-
 // like a std::unique_ptr but for memory create with malloc()
-template<class T>
+template <class T>
 using cunique_ptr = std::unique_ptr<T, MallocDeleter<T> >;
 
 extern SymTable globalSymbols;

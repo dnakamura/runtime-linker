@@ -1,6 +1,6 @@
+#include "logging.hpp"
 #include "objfcn.h"
 #include "runtime_linker.hpp"
-#include "logging.hpp"
 
 using namespace objload;
 

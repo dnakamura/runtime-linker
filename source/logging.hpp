@@ -13,18 +13,16 @@
 #include "spdlog/logger.h"
 
 namespace objload {
-    typedef std::shared_ptr<spdlog::logger> log_ptr;
+typedef std::shared_ptr<spdlog::logger> log_ptr;
 
+LOGGER_DEF log_ptr _log;  // deprecated
 
-    LOGGER_DEF log_ptr _log; // deprecated
-
-    namespace log{
-        LOGGER_DEF log_ptr progbits;
-        LOGGER_DEF log_ptr reloc;
-        LOGGER_DEF log_ptr symtab;
-        LOGGER_DEF log_ptr objsym;
-    }
-
+namespace log {
+LOGGER_DEF log_ptr progbits;
+LOGGER_DEF log_ptr reloc;
+LOGGER_DEF log_ptr symtab;
+LOGGER_DEF log_ptr objsym;
+}
 }
 
 #endif

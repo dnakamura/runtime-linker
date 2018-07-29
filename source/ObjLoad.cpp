@@ -1,24 +1,22 @@
+#include <dlfcn.h>
 #include <elf.h>
+#include <fcntl.h>
 #include <objfcn.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <unistd.h>
-#include <map>
-#include <string>
-#include <vector>
-#include <dlfcn.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
-#include "runtime_linker.hpp"
 #include "logging.hpp"
+#include "runtime_linker.hpp"
 using namespace objload;
-//std::shared_ptr<spdlog::logger> _log;
-
-
+// std::shared_ptr<spdlog::logger> _log;
 
 void *codeCache = NULL;
 void *codeCachePtr = NULL;
@@ -30,14 +28,11 @@ SymTable globalSymbols;
 constexpr size_t CACHE_SIZE = 8 * 1024 * 1024;
 static void *ReadSection(ObjHandle obj, Elf64_Shdr *section);
 
-
-
 Object::Object() { shstrs = NULL; }
 Object::~Object() {
   if (shstrs != NULL) free(shstrs);
   // for(auto mapping: sections)
 }
-
 
 // TODO we are currently assuming 64bit
 /*
@@ -82,16 +77,19 @@ end:
 int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
   log::progbits->trace("Processing progbits section {}", sect_num);
   if (!hdr->sh_flags & SHF_ALLOC) {
-    log::progbits->debug("Skipping section {} since it is not allocated", sect_num);
+    log::progbits->debug("Skipping section {} since it is not allocated",
+                         sect_num);
     return 0;
   }
   if (!hdr->sh_flags & SHF_INFO_LINK) {
-    log::progbits->debug("Skipping section {} since it is an info section", sect_num);
+    log::progbits->debug("Skipping section {} since it is an info section",
+                         sect_num);
     return 0;
   }
 
   if (hdr->sh_name >= obj->shstrs_size) {
-    log::progbits->error("Name for section {}({}) is out of bounds", sect_num, hdr->sh_name);
+    log::progbits->error("Name for section {}({}) is out of bounds", sect_num,
+                         hdr->sh_name);
     return -1;
   }
 
@@ -100,8 +98,9 @@ int ProcessProgBits(ObjHandle obj, int sect_num, const Elf64_Shdr *hdr) {
 
   if (sect_name != ".text"
       //&& sect_name != ".data"
-  ) {
-    log::progbits->info("Skipping unknown PROGBITS section {}", sect_name.c_str());
+      ) {
+    log::progbits->info("Skipping unknown PROGBITS section {}",
+                        sect_name.c_str());
     return 0;
   }
   log::progbits->debug("Loading section {}", sect_num);
@@ -195,13 +194,15 @@ static int ProcessReloca(ObjHandle obj, Elf64_Rela *relocs, size_t sz,
       case R_X86_64_PC32:
       case R_X86_64_PLT32:  // Im pretty sure for object files this is the same
                             // as above
-      {
-        // TODO need to check for overflow
-        *reinterpret_cast<uint32_t *>(patchPoint) =
-            static_cast<uint32_t>(relocValue - patchPoint);
-      } break;
+        {
+          // TODO need to check for overflow
+          *reinterpret_cast<uint32_t *>(patchPoint) =
+              static_cast<uint32_t>(relocValue - patchPoint);
+        }
+        break;
       default:
-        log::reloc->error("Unsupported relocation type {}", ELF64_R_TYPE(reloc.r_info));
+        log::reloc->error("Unsupported relocation type {}",
+                          ELF64_R_TYPE(reloc.r_info));
         return -1;
     }
   }
@@ -242,7 +243,7 @@ static int ProcessRelocs(ObjHandle obj, Elf64_Shdr *reloc) {
 }
 
 static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
-                       Elf64_Shdr *strInfo) {
+                              Elf64_Shdr *strInfo) {
   cunique_ptr<char> stringTable(static_cast<char *>(ReadSection(obj, strInfo)));
   if (!stringTable) {
     log::symtab->error("Failed to read string table");
@@ -278,8 +279,9 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
       const char *symbolName = stringTable.get() + symbol.st_name;
       void *symbolAddr = objsym(NULL, symbolName);
       if (symbolAddr == NULL) {
-        log::symtab->info("Couldnt find symbol {} in objects, looking in native tables",
-                symbolName);
+        log::symtab->info(
+            "Couldnt find symbol {} in objects, looking in native tables",
+            symbolName);
         symbolAddr = dlsym(RTLD_DEFAULT, symbolName);
       }
       if (NULL == symbolAddr) {
@@ -296,7 +298,8 @@ static int ProcessSymbolTable(ObjHandle obj, Elf64_Shdr *symSection,
 
       auto sectionLoad = obj->sections.find(symbol.st_shndx);
       if (sectionLoad == obj->sections.end()) {
-        log::symtab->error("Bad section index {} for symbol {}", symbol.st_shndx, symbolName);
+        log::symtab->error("Bad section index {} for symbol {}",
+                           symbol.st_shndx, symbolName);
         // we didnt load this section, so lets assume we dont need the symbol :P
         obj->symbolVector.push_back(NULL);
         continue;
@@ -332,19 +335,21 @@ int LoadElf(const Elf64_Ehdr &header, ObjectLoadData *loadData) {
     return -1;
   }
 
-  if (1 != fread(secthdrs, header.e_shentsize * header.e_shnum, 1, loadData->f)) {
+  if (1 !=
+      fread(secthdrs, header.e_shentsize * header.e_shnum, 1, loadData->f)) {
     _log->error("Failed to read section headers");
     return -1;
   }
   loadData->object = std::make_unique<Object>();
   loadData->object->header = header;
-  loadData->object->file = loadData->f; //TODO we should get rid of this
+  loadData->object->file = loadData->f;  // TODO we should get rid of this
   std::vector<int> RelocationSections;
 
   // get the shstrtab
-  if (ReadStringTable(loadData->object.get(), reinterpret_cast<Elf64_Shdr *>(
-                                  static_cast<char *>(secthdrs) +
-                                  (header.e_shstrndx * header.e_shentsize)))) {
+  if (ReadStringTable(loadData->object.get(),
+                      reinterpret_cast<Elf64_Shdr *>(
+                          static_cast<char *>(secthdrs) +
+                          (header.e_shstrndx * header.e_shentsize)))) {
     _log->error("FAILED reading SHSTRS");
     return -1;
   }
@@ -382,8 +387,8 @@ int LoadElf(const Elf64_Ehdr &header, ObjectLoadData *loadData) {
 
       case SHT_STRTAB:
         continue;
-        // ERR_LOG("Unhandled shdr type %d", shdr->sh_type);
-        // goto fail;
+      // ERR_LOG("Unhandled shdr type %d", shdr->sh_type);
+      // goto fail;
       // Ignored headers
       case SHT_NULL:
       case SHT_NOTE:
@@ -441,7 +446,7 @@ ObjHandle objopen(const char *file, int flags) {
   }
   std::unique_ptr<ObjectLoadData> loadData = std::make_unique<ObjectLoadData>();
 
-  FILE *f  = fopen(file, "rb");
+  FILE *f = fopen(file, "rb");
   if (nullptr == f) {
     _log->error("Failed to open file '{}'", file);
     return nullptr;
@@ -458,7 +463,7 @@ ObjHandle objopen(const char *file, int flags) {
 #define CHECK_IDENT(n) (header.e_ident[EI_MAG##n] == ELFMAG##n)
   if (!(CHECK_IDENT(0) && CHECK_IDENT(1) && CHECK_IDENT(2))) {
     _log->error("Bad magic {} {} {}", header.e_ident[0], header.e_ident[1],
-            header.e_ident[2]);
+                header.e_ident[2]);
     return nullptr;
   }
 #undef CHECK_IDENT
@@ -468,7 +473,7 @@ ObjHandle objopen(const char *file, int flags) {
     return nullptr;
   }
   int rc = LoadElf(header, loadData.get());
-  if (0 == rc){
+  if (0 == rc) {
     return std::move(loadData->object.release());
   }
   return nullptr;
